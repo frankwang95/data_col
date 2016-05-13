@@ -4,9 +4,10 @@ import socket
 import os
 import boto3
 from fake_useragent import UserAgent
-from utils import key, snd, recv, ioLock, taggedPrintR
+from utils import key, snd, recv, ioLock
 import fabric.api as fab
 import mechanisms as mech
+import controllerIO
 
 
 
@@ -21,7 +22,8 @@ def prep():
 
 
 
-###################### MAIN DATA CLASSES ######################
+###################### INSTANCE CLASS ######################
+'''
 class Instance:
 	def __init__(self, contr, counter, awsInst):
 		self.open = True
@@ -39,7 +41,7 @@ class Instance:
 ### Main instance thread behavior
 	def instThread(self):
 		while not self.contr.shutdownT:
-			time.sleep(5)
+			time.sleep(1)
 
 			if not self.open:
 				self.close()
@@ -47,8 +49,8 @@ class Instance:
 			
 			try: mech.indexI[self.mechI](self)
 			except Exception as e:
-				taggedPrintR(str(e))
-				taggedPrintR('INSTANCE@{0}: mechanism failure, please address and reload mechanisms'.format(self.pDNS))
+				self.addLog(str(e))
+				self.addLog('INSTANCE@{0}: mechanism failure, please address and reload mechanisms'.format(self.pDNS))
 		return(0)
 
 
@@ -64,23 +66,22 @@ class Instance:
 
 ### Prints out instance parameters nicely
 	def prettyPrint(self):
-		taggedPrintR('''>>>> COUNTER: {0}
+		self.addLog(>>>> COUNTER: {0}
 		public dns: {1}
 		mechanism: {2}
-		items in queue: {3}\n'''.format(self.counter, self.inst.public_dns_name, self.mechI, len(self.items)))
-
+		items in queue: {3}\n.format(self.counter, self.inst.public_dns_name, self.mechI, len(self.items)))
 
 ### Closes instance on EC2 servers
 ### Returns jobs properly for reassignment
 ### Removes self from main controller list
 	def close(self):
 		dns = str(self.inst.public_dns_name)
-		taggedPrintR('INSTANCE@{0}: closing instance'.format(dns))
-		del self.contr.awsI[self.counter]
+		self.addLog('INSTANCE@{0}: closing instance'.format(dns))
+		del self.contr.instances[self.counter]
 		self.inst.terminate()
 		time.sleep(10) # to make sure job processes are no longer writing to this process
 		while self.items != []: self.returnItem(self.items[0])
-		taggedPrintR('INSTANCE@{0}: instance closed successfully'.format(dns))
+		self.addLog('INSTANCE@{0}: instance closed successfully'.format(dns))
 
 
 ### Helper function to aid in item removal functions
@@ -89,9 +90,10 @@ class Instance:
 		item.job.unassigned.append(item)
 		self.items.remove(item)
 		return(0)
+'''
 
 
-
+###################### ITEM CLASS ######################
 class Item:
 	def __init__(self, job, data, assgn = None):
 		self.done = False
@@ -100,15 +102,8 @@ class Item:
 		self.assignment = assgn
 
 
-	def prettyprint(self):
-		taggedPrintR('''>>>> ITEM:
-		done: {0}
-		job: {1}
-		data: {2}
-		assignment: {3}\n'''.format(self.done, self.job, self.data, self.assignment))
 
-
-
+###################### JOB CLASS ######################
 class Job:
 	def __init__(self, contr, conn, name, mechS, ret, data):
 		self.done = False
@@ -123,36 +118,32 @@ class Job:
 		threading.Thread(target = self.jobThread).start()
 
 
-### Gives number of remaining items to be done in a job
+	### Gives number of remaining items to be done in a job
 	def rem(self):
 		return(len([i for i in self.items if not i.done]))
 
 
-### Prints out job parametrs nicely
-	def prettyPrint(self):
-		taggedPrintR('''>>>> NAME: {0}
-		connection: {1}
-		remaining requests: {2}
-		schedule mechanism: {3}
-		return method: {4}
-		assignment: {5}\n'''.format(self.name, self.conn, self.rem(), self.mechS, self.ret, self.assignedBool()))
+	### Adds message to the controller log
+	def addLog(self, str):
+		self.contr.log.append(time.strftime("[%H:%M:%S] ", time.localtime()) + 'JOB@{0}: {1}'.format(self.name, str))
+		return(0)
 
 
-### Main job thread behavior
+	### Main job thread behavior
 	def jobThread(self):
 		while not self.contr.shutdownT:
 			time.sleep(5)
 
- 			if len(self.contr.awsI) > 0 and len(self.unassigned) > 0:
+			if len(self.contr.instances) > 0 and len(self.unassigned) > 0:
  				try: code = mech.indexS[self.mechS](self)
- 				except: taggedPrintR('JOB@{0}: mechanism failure, please address and reload mechanisms'.format(self.name))
- 				if code == 0: taggedPrintR('JOB@{0}: assigned jobs'.format(self.name))
+ 				except: self.addLog('mechanism failure, please address and reload mechanisms')
+ 				if code == 0: self.addLog('JOB@{0}: assigned jobs'.format(self.name))
 
  			if self.rem() == 0:
  				self.done = True
  				try: self.retProc()
- 				except: taggedPrintR('JOB@{0}: return delivery failed'.format(self.name))
- 				taggedPrintR('JOB@{0}: completed'.format(self.name))
+ 				except: self.addLog('JOB@{0}: return delivery failed'.format(self.name))
+ 				self.addLog('JOB@{0}: completed'.format(self.name))
  				del self.contr.jobs[self.name]
  				return(0)
 		return(0)
@@ -179,55 +170,61 @@ class Job:
 
 
 
+###################### CONTROLLER CLASS ######################
 class Controller:
 	def __init__ (self):
 		self.shutdownT = False
-		self.ioLock = threading.Lock()
-		self.stats = {}
 		self.jobs = {}
-		self.awsI = {}
+		self.instances = {}
 		self.mech = 'paused'
-		self.awsCounter = 0
+		self.instanceCounter = 0
 		self.jobCounter = 0
+		self.log = []
+
 		self.awsHandle = boto3.resource('ec2')
-
-		taggedPrintR('CONTROLLER: launching instance controler')
-
-		## opens command input
-		taggedPrintR('CONTROLLER: launching input handler')
-		threading.Thread(target = self.commandHandler).start()
+		
+		self.addLog('launching instance controler')
 
 		## opens input IO
-		taggedPrintR('CONTROLLER: launching IO')
+		self.addLog('launching IO')
 		self.ioSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		self.ioSocket.settimeout(None)
 		self.ioSocket.bind(('', 0))
 		self.port = self.ioSocket.getsockname()[1]
 		self.ioSocket.listen(100)
-		taggedPrintR('CONTROLLER: port at {0} listening for connections...'.format(self.port))
+		self.addLog('port at {0} listening for connections...'.format(self.port))
 		threading.Thread(target = self.ioIn).start()
 
+		## begins main thread process
 		threading.Thread(target = self.mainControllerThread).start()
 
+		controllerIO.controllerIO(self)
+
+
+	### Main thread process
 	def mainControllerThread(self):
 		while not self.shutdownT:
-			time.sleep(5)
+			time.sleep(1)
 			try: mech.indexC[self.mech](self)
-			except: taggedPrintR('CONTROLLER: mechanism failure, please address and reload mechanisms')
+			except: self.addLog('mechanism failure, please address and reload mechanisms')
 		self.shutdown()
 
-	########## IO
-	def taggedPrintR(self, str):
-		with self.ioLock: taggedPrintdefR(time.strftime("[%H:%M:%S] ", time.localtime()) + str)
+
+	def addLog(self, str):
+		self.log.append(time.strftime("[%H:%M:%S] ", time.localtime()) + 'SCHEDULER: ' + str)
 		return(0)
 
+
+	########## Receiving Jobs ##########
 	def ioIn(self):
 		while not self.shutdownT:
 			(conn, addr) = self.ioSocket.accept()
-			taggedPrintR('CONTROLLER: connection made with: ' + str(addr))
+			self.addLog('CONTROLLER: connection made with: ' + str(addr))
 			conn.settimeout(None)
 			threading.Thread(target = self.ioInSub, args = (conn,)).start()
 		return(0)
+
+
 	def ioInSub(self, conn):
 		recievedIn = recv(conn)
 		if recievedIn == 1: return(1)
@@ -242,126 +239,131 @@ class Controller:
 		try:
 			x = Job(self, conn, name, mechS, ret, data)
 			self.jobs[name] = x
-			taggedPrintR('CONTROLLER: new job recieved:')
+			self.addLog('CONTROLLER: new job recieved:')
 			x.prettyPrint()
 		except:
-			taggedPrintR('CONTROLLER: bad input or recv failure, closing connection')
+			self.addLog('CONTROLLER: bad input or recv failure, closing connection')
 
-	########## Handler
-	def commandHandler(self):
-		while not self.shutdownT:
-			raw_input('')
-			with ioLock: inp = raw_input(">>> ")
-			try: self.runCommand(inp)
-			except:
-				taggedPrintR('>>>>>> command invalid')
-		return(0)
 
+	########## Command-line Input ##########
 	def runCommand(self, inp):
 		inp = inp.split()
 		if len(inp) == 0: return(0)
-		if inp[0] == 'shutdown': ###CHECKED###
-			with self.ioLock: check = raw_input('>>> are you sure you want to shutdown?\n>>> ')
+		if inp[0] == 'shutdown':
+			check = raw_input('>>> are you sure you want to shutdown?\n>>> ')
 			if check == 'y':
-				self.shutdownT = True
-				s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-				s.connect(('localhost', self.port))
-				s.close()
+				self.shutdown()
 			return(0)
 		if inp[0] == 'reload':
 			reload(mech)
-			taggedPrintR('>>>>>> mechanism library reloaded')
+			self.addLog('>>>>>> mechanism library reloaded')
 			return(0)
 		if inp[0] == 'controller':
 			if inp[1] not in mech.indexC:
-				taggedPrintR('>>>>>> error: mechanism {0} does not exist'.format(inp[1]))
+				self.addLog('>>>>>> error: mechanism {0} does not exist'.format(inp[1]))
 				return(1)
 			self.mech = inp[1]
-			taggedPrintR('>>>>>> mechanism for controller changed to {0}'.format(inp[1]))
+			self.addLog('>>>>>> mechanism for controller changed to {0}'.format(inp[1]))
 			return(0)
-		if inp[0] == 'instance': ###CHECKED###
+		if inp[0] == 'instance':
 			if len(inp) == 1:
-				if len(self.awsI) == 0:
-					taggedPrintR('>>>>>> no instances open')
+				if len(self.instances) == 0:
+					self.addLog('>>>>>> no instances open')
 					return(0)
-				for i in self.awsI: self.awsI[i].prettyPrint()
-				taggedPrintR('>>>>>> TOTAL: ' + str(len(self.awsI)))
+				for i in self.instances: self.instances[i].prettyPrint()
+				self.addLog('>>>>>> TOTAL: ' + str(len(self.instances)))
 				return(0)
 			if inp[1] == 'stats':
 				n = int(inp[2])
-				if n not in self.awsI:
-					taggedPrintR('>>>>>> error: index {0} out of range'.format(n))
+				if n not in self.instances:
+					self.addLog('>>>>>> error: index {0} out of range'.format(n))
 					return(1)
-				taggedPrintR('>>>>>> stats for instance {0}: {1}'.format(n, self.awsI[n].stats))
+				self.addLog('>>>>>> stats for instance {0}: {1}'.format(n, self.instances[n].stats))
 				return(0)
 			if inp[1] == 'flush':
 				n = int(inp[2])
-				if n not in self.awsI:
-					taggedPrintR('>>>>>> error: index {0} out of range'.format(n))
+				if n not in self.instances:
+					self.addLog('>>>>>> error: index {0} out of range'.format(n))
 					return(1)
-				taggedPrintR('>>>>>> flushing items for instance {0}'.format(n))
-				self.awsI[n].flush()
+				self.addLog('>>>>>> flushing items for instance {0}'.format(n))
+				self.instances[n].flush()
 				return(0)
 			if inp[1] == 'initialize':
 				self.initialize(int(inp[2]))
 				return(0)
 			if inp[1] == 'close': 
-				if len(inp) < 3: taggedPrintR('>>>>>> error, enter instance key(s) to close')
+				if len(inp) < 3: self.addLog('>>>>>> error, enter instance key(s) to close')
 				nL = [int(i) for i in inp[2:]]
 				for i in nL:
-					if i not in self.awsI:
-						taggedPrintR('>>>>>> warning: index {0} out of range'.format(i))
-					self.awsI[i].open = False
+					if i not in self.instances:
+						self.addLog('>>>>>> warning: index {0} out of range'.format(i))
+					self.instances[i].open = False
 				return(0)
 			if inp[1] == 'mech':
 				n = int(inp[2])
-				if n not in self.awsI:
-					taggedPrintR('>>>>>> error: index {0} out of range'.format(n))
+				if n not in self.instances:
+					self.addLog('>>>>>> error: index {0} out of range'.format(n))
 					return(1)
 				if inp[3] not in mech.indexI:
-					taggedPrintR('>>>>>> error: mechanism {0} does not exist'.format(inp[3]))
+					self.addLog('>>>>>> error: mechanism {0} does not exist'.format(inp[3]))
 					return(1)
-				self.awsI[n].mechI = inp[3]
-				taggedPrintR('>>>>>> mechanism for instance {0} changed to {1}'.format(n, inp[3]))
+				self.instances[n].mechI = inp[3]
+				self.addLog('>>>>>> mechanism for instance {0} changed to {1}'.format(n, inp[3]))
 				return(0)
 		if inp[0] == 'job':
 			if len(inp) == 1:
 				if len(self.jobs) == 0:
-					taggedPrintR('>>>>>> no jobs open')
+					self.addLog('>>>>>> no jobs open')
 					return(0)
 				for i in self.jobs: self.jobs[i].prettyPrint()
-				taggedPrintR('>>>>>> TOTAL: ' + str(len(self.jobs)))
+				self.addLog('>>>>>> TOTAL: ' + str(len(self.jobs)))
 				return(0)
 			if inp[1] == 'mech':
 				nm = inp[2]
 				if n not in self.jobs:
-					taggedPrintR('>>>>>> error: index {0} out of range'.format(n))
+					self.addLog('>>>>>> error: index {0} out of range'.format(n))
 					return(1)
 				if inp[3] not in mech.indexS:
-					taggedPrintR('>>>>>> error: mechanism {0} does not exist'.format(inp[3]))
+					self.addLog('>>>>>> error: mechanism {0} does not exist'.format(inp[3]))
 					return(1)
 				self.jobs[nm].mechS = inp[3]
-				taggedPrintR('>>>>>> mechanism for job {0} changed to {1}'.format(nm, inp[3]))
+				self.addLog('>>>>>> mechanism for job {0} changed to {1}'.format(nm, inp[3]))
 				return(0)
 			if inp[1] == 'testing':
 				nm = inp[2]
 				for i in self.jobs[nm].items:
 					i.prettyprint()
-		if inp[0] == 'port': ###CHECKED###
-			taggedPrintR('>>>>>> ' + str(self.port))
+		if inp[0] == 'port':
+			self.addLog('>>>>>> ' + str(self.port))
 			return(0)
-		taggedPrintR('>>>>>> command invalid')
+		self.addLog('>>>>>> command invalid')
 
 	########## Shutdown
 	def shutdown(self):
-		taggedPrintR('CONTROLLER: shutting down NOW')
-		x = list(self.awsI.keys())
-		for i in x: self.awsI[i].close()
+		self.addLog('CONTROLLER: shutting down NOW')
+		self.shutdownT = True
+
+		x = list(self.instances.keys())
+		for i in x: self.instances[i].close()
+
+		s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		s.connect(('localhost', self.port))
+		s.close()		
 		return(0)
+
+
+	########## Reload
+	def relMech(self):
+		try:
+			reload(mech)
+			self.addLog('mechanism library reloaded')
+		except Exception as e:
+			self.addLog('mechanism reload failure with exception: {0}'.format(e))
+
 
 	########## AWS Management
 	def initialize(self, n = 1, type = 't2.nano'):
-		taggedPrintR('CONTROLLER: initializing instances...')
+		self.addLog('CONTROLLER: initializing instances...')
 		imgL = self.awsHandle.create_instances(
 			ImageId='ami-9abea4fb',
 			InstanceType = type,
@@ -371,22 +373,22 @@ class Controller:
 		for i in imgL: i.wait_until_running()
 		time.sleep(20)
 		for rec in imgL: rec.create_tags(Tags=[{'Key':'Name', 'Value': 'datcol'}])
-		taggedPrintR('CONTROLLER: DONE - new instances initialized')
+		self.addLog('CONTROLLER: DONE - new instances initialized')
 		
 		# Send get file to all nodes
-		taggedPrintR('CONTROLLER: putting dependencies to new instances...')
+		self.addLog('CONTROLLER: putting dependencies to new instances...')
 		time.sleep(60)
 		for i in imgL:
 			i.load()
 			fab.execute(prep, hosts = ['ubuntu@' + i.public_dns_name])
 		for i in imgL:
-			x = Instance(self, self.awsCounter, i)
-			self.awsI[self.awsCounter] = x
-			taggedPrintR('CONTROLLER: new instance created')
+			x = Instance(self, self.instanceCounter, i)
+			self.instances[self.instanceCounter] = x
+			self.addLog('CONTROLLER: new instance created')
 			x.prettyPrint()
-			self.awsCounter += 1
+			self.instanceCounter += 1
 
-		taggedPrintR('CONTROLLER: DONE - instances ready')
+		self.addLog('CONTROLLER: DONE - instances ready')
 		return(0)
 
 Controller()

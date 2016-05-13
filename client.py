@@ -4,12 +4,11 @@ import os
 import mechanisms as mech
 from utils import snd, recv
 
-port_def = 58302
-retOpt = ['default']
+
 
 # mechS - See mechanisms.py
 # ret - 'default', 'pathtowrite'
-def putget(data, name = 'default', mechS = 'paused', ret = 'default', port = port_def):
+def putget(data, port, name = 'default', mechS = 'paused', ret = 'default'):
 	if mechS not in mech.indexS:
 		print('mechS argument invalid, putget failed')
 		return(1)

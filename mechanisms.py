@@ -2,13 +2,13 @@ import random
 import time
 import datetime
 import threading
-from utils import request, hourodds
+from utils import request, hourodds, taggedPrintR
 
 
 
 #################### PAUSED BEHAVIOR ####################
 def paused(instJobContr):
-	time.sleep(5)
+	#time.sleep(5)
 	return(1)
 
 
@@ -44,7 +44,7 @@ def defaultInst(inst):
 		except Exception as e:
 			inst.items.append(x)
 	return(0)
-
+	
 
 
 def yelp(inst):
@@ -52,13 +52,10 @@ def yelp(inst):
 	hour = int(time.strftime('%H'))
 	minute = int(time.strftime('%M')) - (int(time.strftime('%M')) % 5)
 
-	inst.stats['hourpull'] = True
-	inst.stats['datepull'] = True
-
 	if inst.stats['date'] != today:
 		inst.stats['date'] = today
 		inst.stats['datepull'] = True
-		if random.randint(1,6) == 1: inst.stats['datepull'] = False
+		if random.randint(1,10) == 1: inst.stats['datepull'] = False
 
 	if inst.stats['hour'] != hour:
 		inst.stats['hour'] = hour
@@ -71,12 +68,12 @@ def yelp(inst):
 		if random.randint(1,100) < 70: inst.stats['minpull'] = True
 
 	random.shuffle(inst.items)
-	tEnd = time.time() + 40
+	tEnd = time.time() + 20
 	while time.time() < tEnd and len(inst.items) > 0:
 		x = inst.items.pop(0)
 		if x.job.name[:4] == 'yelp':
-			if inst.stats['datepull'] and inst.stats['hourpull'] and inst.stats['minpull'] and minute > 20:
-				time.sleep(random.randint(0,200))
+			if inst.stats['datepull'] and inst.stats['hourpull'] and inst.stats['minpull'] and (minute > 10 or minute < 10):
+				time.sleep(random.randint(0,100))
 				try:
 					resultFromAWS = request(inst.pDNS, x.data)
 					x.done = resultFromAWS
