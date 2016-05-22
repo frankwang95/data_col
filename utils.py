@@ -11,13 +11,6 @@ key = 'datacol'
 ua = UserAgent()
 
 
-def request(pDNS, html):
-	recieved = subprocess.check_output(['ssh', '-o', 'StrictHostKeyChecking=no',
-		'-i', 'datacol.pem', pDNS,
-		'python gethttp.py', html.replace('&', '\&'), '"{0}"'.format(ua.random)], stderr=subprocess.STDOUT)
-	return(recieved)
-
-
 
 #################### NETWORKING FUNCTIONS ####################
 def snd(s, msg):

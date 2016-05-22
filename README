@@ -1,0 +1,44 @@
+#DataCol Documentation
+The following library gives the framework for a running instance which manages EC2 instances. Currently, the library is written with the purpose of managing instances for the purpose of web scraping. However, the implementation is designed so that expanding the libraries versatility can be done at a later time. 
+
+
+##The Client Library
+This library enables you to send jobs to any open `Controller` processes. Make you you set the global variable to the port opened by the Controller you wish to connect with.
+
+The primary function in the `client` library is `putget`:
+
+	`putget(data, name='default', mechS='paused', ret='default')`
+
+- `data` is a list of strings denoting urls to be sent to the controller
+- `name = 'default'` is a string which gives a name to the job. If input `'default'` is given, the job is given a numerical name.
+-  `mechS = 'paused` is a string which denotes the default assignment mechanism given to the job (see controller mechanisms below).
+- `ret = 'default'` is a string which denotes the default return method once the job is completed.
+	- `'default'` results in the the function `putget` return the result of the controller's work
+	- Otherwise, you may enter a string as a filepath for this argument and the controller will write the results to files at that path.
+
+
+##The Controller Instance
+The controller manages amazon web service instances. Jobs can be sent to the controller through the client library. Commands can be issued to a running controller instance. Use `return` to enter command mode. The section below details currently available commands.
+
+The controller gives names to each instance and job it is currently managing. Instances are given numerical names for reference in  the order that they were created. Jobs are follow the same naming convention but jobs can also be given names when they are sent to the controller instance as an function argument.
+
+
+###Controller Commands
+- port - get port number for in/out
+- shutdown - shutdown the controller instance
+- reload - reload mechanisms library
+- instance
+	- *[no args]* - prints all open instances
+	- initialize *n* - creates n new instances
+	- close *[n]* - closes all instances given in *[n]*
+	- mech *n m* - assignments mechanism `m` to instance `n`
+	- flush *n* - returns all items of instance `n` for reassignment
+	- stats *n* - displays current stats for instance `n`
+- job
+	- *[no args]* - prints all open jobs
+	- mech *n m* - assigns mechanism `m` to job with name `n`
+-controller
+	- *n* - assigns mechanism n to the main controller process.
+
+
+###Controller Mechanisms

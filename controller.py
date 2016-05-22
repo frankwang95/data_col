@@ -3,9 +3,11 @@ import threading
 import socket
 import os
 import boto3
+import requests
 from fake_useragent import UserAgent
-from utils import key, snd, recv, ioLock
+from utils import key, ua, snd, recv, ioLock
 import fabric.api as fab
+import fabric
 import mechanisms as mech
 import controllerIO
 
@@ -14,38 +16,66 @@ import controllerIO
 ###################### FAB METHODS AND VARIABLES ######################
 fab.env.user = 'ubuntu'
 fab.env.key_filename = key + '.pem'
+fabric.state.output['running'] = False
 
 
 def prep():
-	with fab.hide('output','running','warnings'), fab.settings(warn_only=True):
+	with fab.hide('status', 'aborts', 'running', 'warnings', 'stdout', 'stderr', 'user'), fab.settings(warn_only=True):
 		fab.put('gethttp.py', '~')
 
 
 
 ###################### INSTANCE CLASS ######################
-'''
-class Instance:
-	def __init__(self, contr, counter, awsInst):
-		self.open = True
+class AWSInstance:
+	def __init__(self, contr, counter, type = 't2.nano'):
 		self.contr = contr
 		self.counter = counter
-		self.inst = awsInst
-		self.pDNS = 'ubuntu@' + awsInst.public_dns_name
+		self.type = 'aws'
 		self.mechI = 'paused'
 		self.stats = {'date': None, 'hour': None, 'min': None}
 		self.items = []
 
+		self.itemLock = threading.Lock()
+
+		# command tags
+		self.closeCmd = False
+		self.flushCmd = False
+
+		# initialize instance on amazon side
+		self.addLog('opening aws instance on amazon servers...')
+		self.inst = contr.awsHandle.create_instances(
+			ImageId='ami-9abea4fb',
+			InstanceType = type,
+			MinCount=1, MaxCount=1,
+			KeyName='datacol',
+			SecurityGroups = ['launch-wizard-9'])[0]
+		self.inst.wait_until_running()
+		self.inst.create_tags(Tags=[{'Key':'Name', 'Value': 'datcol'}])
+		self.pDNS = 'ubuntu@' + self.inst.public_dns_name
+
+		self.addLog('loading dependencies to server...')
+		time.sleep(60)
+		self.inst.load()
+		fab.execute(prep, hosts = [self.pDNS])
+
+		self.addLog('aws instance initialized')	
+		
 		threading.Thread(target = self.instThread).start()
 
 
-### Main instance thread behavior
+	### Main instance thread behavior
 	def instThread(self):
 		while not self.contr.shutdownT:
 			time.sleep(1)
 
-			if not self.open:
-				self.close()
-				return(0)
+			with self.itemLock:
+				if self.closeCmd:
+					self.close()
+					return(0)
+
+				if self.flushCmd:
+					self.flush()
+					self.flushCmd = False
 			
 			try: mech.indexI[self.mechI](self)
 			except Exception as e:
@@ -54,43 +84,115 @@ class Instance:
 		return(0)
 
 
-### Removes all jobs from instance for reassignment
-	def flush(self):
-		n = len(self.items)
-
-		while n > 0:
-			self.returnItem(self.items[0])
-			n -= 1
+	### adds message to the controller log
+	def addLog(self, str):
+		self.contr.log.append(time.strftime("[%H:%M:%S] ", time.localtime()) + 'INSTANCE@{0}: {1}'.format(self.counter, str))
 		return(0)
 
 
-### Prints out instance parameters nicely
-	def prettyPrint(self):
-		self.addLog(>>>> COUNTER: {0}
-		public dns: {1}
-		mechanism: {2}
-		items in queue: {3}\n.format(self.counter, self.inst.public_dns_name, self.mechI, len(self.items)))
+	def flush(self):
+		for i in self.items:
+			self.items.remove(i)
+			i.assignment = None
+		self.addLog('instance items flushed')
+		return(0)
 
-### Closes instance on EC2 servers
-### Returns jobs properly for reassignment
-### Removes self from main controller list
+
 	def close(self):
-		dns = str(self.inst.public_dns_name)
-		self.addLog('INSTANCE@{0}: closing instance'.format(dns))
+		self.addLog('closing instance')
 		del self.contr.instances[self.counter]
 		self.inst.terminate()
 		time.sleep(10) # to make sure job processes are no longer writing to this process
-		while self.items != []: self.returnItem(self.items[0])
-		self.addLog('INSTANCE@{0}: instance closed successfully'.format(dns))
+		self.flush()
+		self.addLog('instance closed successfully')
 
 
-### Helper function to aid in item removal functions
-	def returnItem(self, item):
-		item.assignment = None
-		item.job.unassigned.append(item)
-		self.items.remove(item)
+	def changeMech(self, newMech):
+		self.mechI = newMech
+		self.addLog('instance mech changed to: {0}'.format(newMech))
 		return(0)
-'''
+
+
+	def request(self, html):
+		recieved = subprocess.check_output(['ssh', '-o', 'StrictHostKeyChecking=no',
+			'-i', 'datacol.pem', self.pDNS,
+			'python gethttp.py', html.replace('&', '\&'), '"{0}"'.format(ua.random)], stderr=subprocess.STDOUT)
+		return(recieved)
+
+
+
+class LocalInstance:
+	def __init__(self, contr, counter):
+		self.type = 'local'
+		self.contr = contr
+		self.counter = counter
+		self.mechI = 'paused'
+		self.stats = {}
+		self.items = []
+
+		self.itemLock = threading.Lock()
+
+		# command tags
+		self.closeCmd = False
+		self.flushCmd = False
+
+		self.addLog('local instance initialized')
+
+		threading.Thread(target = self.instThread).start()
+
+
+	### adds message to the controller log
+	def addLog(self, str):
+		self.contr.log.append(time.strftime("[%H:%M:%S] ", time.localtime()) + 'INSTANCE@{0}: {1}'.format(self.counter, str))
+		return(0)
+
+	### main thread function
+	def instThread(self):
+		while not self.contr.shutdownT:
+			time.sleep(2)
+
+			with self.itemLock:
+				if self.closeCmd:
+					self.close()
+					return(0)
+				if self.flushCmd:
+					self.flush()
+					self.flushCmd = False
+	
+				try: mech.indexI[self.mechI](self)
+				except Exception as e:
+					self.addLog('mechanism failure: {0}'.format(e))
+		return(0)
+
+
+	### flush thread items
+	def flush(self):
+		for i in self.items:
+			self.items.remove(i)
+			i.assignment = None
+		self.addLog('instance items flushed')
+		return(0)
+
+	### close this thread
+	def close(self):
+		self.addLog('closing instance...')
+		del self.contr.instances[self.counter]
+		time.sleep(5)
+		self.flush()
+		self.addLog('instance closed successfully')
+		return(0)
+
+
+	def request(self, link):
+		return(requests.get(link).text)
+
+
+	def changeMech(self, newMech):
+		#maybe check for validity
+		self.mechI = newMech
+		self.addLog('instance mech changed to: {0}'.format(newMech))
+		return(0)
+
 
 
 ###################### ITEM CLASS ######################
@@ -113,14 +215,18 @@ class Job:
 		self.mechS = mechS
 		self.ret = ret
 		self.items = [Item(self, i) for i in data]
-		self.unassigned = list(self.items)
 
 		threading.Thread(target = self.jobThread).start()
 
 
 	### Gives number of remaining items to be done in a job
 	def rem(self):
-		return(len([i for i in self.items if not i.done]))
+		return([i for i in self.items if not i.done])
+
+
+	## Gives number of unassigned items
+	def unassn(self):
+		return([i for i in self.items if i.assignment == None and i.done == False])
 
 
 	### Adds message to the controller log
@@ -134,22 +240,23 @@ class Job:
 		while not self.contr.shutdownT:
 			time.sleep(5)
 
-			if len(self.contr.instances) > 0 and len(self.unassigned) > 0:
- 				try: code = mech.indexS[self.mechS](self)
- 				except: self.addLog('mechanism failure, please address and reload mechanisms')
- 				if code == 0: self.addLog('JOB@{0}: assigned jobs'.format(self.name))
+			if len(self.contr.instances) > 0 and len(self.unassn()) > 0:
+ 				try:
+ 					code = mech.indexS[self.mechS](self)
+					if code == 0: self.addLog('assigned jobs'.format(self.name))
+ 				except Exception as e: self.addLog('mechanism failure: {0}'.format(e))
 
- 			if self.rem() == 0:
+ 			if len(self.rem()) == 0:
  				self.done = True
  				try: self.retProc()
- 				except: self.addLog('JOB@{0}: return delivery failed'.format(self.name))
- 				self.addLog('JOB@{0}: completed'.format(self.name))
+ 				except: self.addLog('return delivery failed'.format(self.name))
+ 				self.addLog('completed'.format(self.name))
  				del self.contr.jobs[self.name]
  				return(0)
 		return(0)
 
 
-### Function that performs task of returning completed jobs to specified targets
+	### Function that performs task of returning completed jobs to specified targets
 	def retProc(self):
 		if self.ret == 'default':
 			returnPackage = str([(i.data, i.done) for i in self.items])
@@ -162,11 +269,6 @@ class Job:
 			handle.write(i.done)
 			handle.close()
 		return(0)
-
-
-### Checks to see if all jobs are properly assigned to an instance
-	def assignedBool(self):
-		return self.unassigned == []
 
 
 
@@ -207,7 +309,6 @@ class Controller:
 			time.sleep(1)
 			try: mech.indexC[self.mech](self)
 			except: self.addLog('mechanism failure, please address and reload mechanisms')
-		self.shutdown()
 
 
 	def addLog(self, str):
@@ -239,112 +340,18 @@ class Controller:
 		try:
 			x = Job(self, conn, name, mechS, ret, data)
 			self.jobs[name] = x
-			self.addLog('CONTROLLER: new job recieved:')
-			x.prettyPrint()
-		except:
-			self.addLog('CONTROLLER: bad input or recv failure, closing connection')
+			self.addLog('CONTROLLER: new job recieved: {0}'.format(x.name))
+		except Exception as e:
+			self.addLog('CONTROLLER: bad input or recv failure, closing connection: {0}'.format(e))
 
-
-	########## Command-line Input ##########
-	def runCommand(self, inp):
-		inp = inp.split()
-		if len(inp) == 0: return(0)
-		if inp[0] == 'shutdown':
-			check = raw_input('>>> are you sure you want to shutdown?\n>>> ')
-			if check == 'y':
-				self.shutdown()
-			return(0)
-		if inp[0] == 'reload':
-			reload(mech)
-			self.addLog('>>>>>> mechanism library reloaded')
-			return(0)
-		if inp[0] == 'controller':
-			if inp[1] not in mech.indexC:
-				self.addLog('>>>>>> error: mechanism {0} does not exist'.format(inp[1]))
-				return(1)
-			self.mech = inp[1]
-			self.addLog('>>>>>> mechanism for controller changed to {0}'.format(inp[1]))
-			return(0)
-		if inp[0] == 'instance':
-			if len(inp) == 1:
-				if len(self.instances) == 0:
-					self.addLog('>>>>>> no instances open')
-					return(0)
-				for i in self.instances: self.instances[i].prettyPrint()
-				self.addLog('>>>>>> TOTAL: ' + str(len(self.instances)))
-				return(0)
-			if inp[1] == 'stats':
-				n = int(inp[2])
-				if n not in self.instances:
-					self.addLog('>>>>>> error: index {0} out of range'.format(n))
-					return(1)
-				self.addLog('>>>>>> stats for instance {0}: {1}'.format(n, self.instances[n].stats))
-				return(0)
-			if inp[1] == 'flush':
-				n = int(inp[2])
-				if n not in self.instances:
-					self.addLog('>>>>>> error: index {0} out of range'.format(n))
-					return(1)
-				self.addLog('>>>>>> flushing items for instance {0}'.format(n))
-				self.instances[n].flush()
-				return(0)
-			if inp[1] == 'initialize':
-				self.initialize(int(inp[2]))
-				return(0)
-			if inp[1] == 'close': 
-				if len(inp) < 3: self.addLog('>>>>>> error, enter instance key(s) to close')
-				nL = [int(i) for i in inp[2:]]
-				for i in nL:
-					if i not in self.instances:
-						self.addLog('>>>>>> warning: index {0} out of range'.format(i))
-					self.instances[i].open = False
-				return(0)
-			if inp[1] == 'mech':
-				n = int(inp[2])
-				if n not in self.instances:
-					self.addLog('>>>>>> error: index {0} out of range'.format(n))
-					return(1)
-				if inp[3] not in mech.indexI:
-					self.addLog('>>>>>> error: mechanism {0} does not exist'.format(inp[3]))
-					return(1)
-				self.instances[n].mechI = inp[3]
-				self.addLog('>>>>>> mechanism for instance {0} changed to {1}'.format(n, inp[3]))
-				return(0)
-		if inp[0] == 'job':
-			if len(inp) == 1:
-				if len(self.jobs) == 0:
-					self.addLog('>>>>>> no jobs open')
-					return(0)
-				for i in self.jobs: self.jobs[i].prettyPrint()
-				self.addLog('>>>>>> TOTAL: ' + str(len(self.jobs)))
-				return(0)
-			if inp[1] == 'mech':
-				nm = inp[2]
-				if n not in self.jobs:
-					self.addLog('>>>>>> error: index {0} out of range'.format(n))
-					return(1)
-				if inp[3] not in mech.indexS:
-					self.addLog('>>>>>> error: mechanism {0} does not exist'.format(inp[3]))
-					return(1)
-				self.jobs[nm].mechS = inp[3]
-				self.addLog('>>>>>> mechanism for job {0} changed to {1}'.format(nm, inp[3]))
-				return(0)
-			if inp[1] == 'testing':
-				nm = inp[2]
-				for i in self.jobs[nm].items:
-					i.prettyprint()
-		if inp[0] == 'port':
-			self.addLog('>>>>>> ' + str(self.port))
-			return(0)
-		self.addLog('>>>>>> command invalid')
 
 	########## Shutdown
 	def shutdown(self):
-		self.addLog('CONTROLLER: shutting down NOW')
+		self.addLog('shutting down NOW')
 		self.shutdownT = True
 
 		x = list(self.instances.keys())
-		for i in x: self.instances[i].close()
+		for i in x: self.instances[i].closeCmd = True
 
 		s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		s.connect(('localhost', self.port))
@@ -361,34 +368,25 @@ class Controller:
 			self.addLog('mechanism reload failure with exception: {0}'.format(e))
 
 
-	########## AWS Management
-	def initialize(self, n = 1, type = 't2.nano'):
-		self.addLog('CONTROLLER: initializing instances...')
-		imgL = self.awsHandle.create_instances(
-			ImageId='ami-9abea4fb',
-			InstanceType = type,
-			MinCount=n, MaxCount=n,
-			KeyName='datacol',
-			SecurityGroups = ['launch-wizard-9'])
-		for i in imgL: i.wait_until_running()
-		time.sleep(20)
-		for rec in imgL: rec.create_tags(Tags=[{'Key':'Name', 'Value': 'datcol'}])
-		self.addLog('CONTROLLER: DONE - new instances initialized')
-		
-		# Send get file to all nodes
-		self.addLog('CONTROLLER: putting dependencies to new instances...')
-		time.sleep(60)
-		for i in imgL:
-			i.load()
-			fab.execute(prep, hosts = ['ubuntu@' + i.public_dns_name])
-		for i in imgL:
-			x = Instance(self, self.instanceCounter, i)
-			self.instances[self.instanceCounter] = x
-			self.addLog('CONTROLLER: new instance created')
-			x.prettyPrint()
+	########## Initialize
+	def initialize(self, type):
+		self.addLog('attempting to initialize {0} instance...'.format(type))
+		if type == 'local':
+			self.instances[self.instanceCounter] = LocalInstance(self, self.instanceCounter)
 			self.instanceCounter += 1
+			return(0)
 
-		self.addLog('CONTROLLER: DONE - instances ready')
-		return(0)
+		elif type == 'aws':
+			threading.Thread(target = self.awsInitHelper, args = (self.instanceCounter,)).start()
+			self.instanceCounter += 1
+			return(0)
+
+		return(1)
+		
+
+	def awsInitHelper(self, counter):
+		self.instances[counter] = AWSInstance(self, counter)
+		self.addLog(str(self.instances))
+
 
 Controller()

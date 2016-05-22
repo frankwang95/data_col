@@ -1,8 +1,9 @@
 import random
 import time
+import requests
 import datetime
 import threading
-from utils import request, hourodds, taggedPrintR
+from utils import hourodds, taggedPrintR
 
 
 
@@ -16,11 +17,11 @@ def paused(instJobContr):
 #################### SECHDULER BEHAVIORS ####################
 ### Default scheduler simply assigns jobs to random instances
 def defaultSch(job):
-	while len(job.unassigned) > 0:
-		instance = job.contr.awsI[random.choice(job.contr.awsI.keys())]
-		job.unassigned[0].assignment = instance
-		instance.items.append(job.unassigned[0])
-		del job.unassigned[0]
+	for i in job.unassn():
+		instance = job.contr.instances[random.choice(job.contr.instances.keys())]
+		i.assignment = instance
+		with instance.itemLock:
+			instance.items.append(i)
 	return(0)
 
 
@@ -38,16 +39,20 @@ def defaultInst(inst):
 		x = inst.items.pop(0)
 
 		try:
-			resultFromAWS = request(inst.pDNS, x.data)
-			x.done = resultFromAWS
+			resutltFromAWS = inst.request(x.data)
+			x.done = resutltFromAWS
 			x.assignment = None
+
 		except Exception as e:
 			inst.items.append(x)
+			inst.addLog(e)
 	return(0)
 	
 
 
 def yelp(inst):
+	return(0)
+	'''
 	today = int(time.strftime('%d'))
 	hour = int(time.strftime('%H'))
 	minute = int(time.strftime('%M')) - (int(time.strftime('%M')) % 5)
@@ -91,7 +96,7 @@ def yelp(inst):
 			x.assignment = None
 		except Exception as e:
 			inst.items.append(x)
-	return(0)
+	return(0)'''
 
 
 ### Gives dictionary for access to instance behaviors
