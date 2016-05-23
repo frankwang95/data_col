@@ -4,10 +4,13 @@ import socket
 import os
 import boto3
 import requests
+import subprocess
+
 from fake_useragent import UserAgent
-from utils import key, ua, snd, recv, ioLock
 import fabric.api as fab
 import fabric
+
+from utils import key, ua, snd, recv, ioLock
 import mechanisms as mech
 import controllerIO
 
@@ -79,8 +82,7 @@ class AWSInstance:
 			
 			try: mech.indexI[self.mechI](self)
 			except Exception as e:
-				self.addLog(str(e))
-				self.addLog('INSTANCE@{0}: mechanism failure, please address and reload mechanisms'.format(self.pDNS))
+				self.addLog('mechanism failure: {0}'.format(e))
 		return(0)
 
 
@@ -91,7 +93,8 @@ class AWSInstance:
 
 
 	def flush(self):
-		for i in self.items:
+		items = self.items[:]
+		for i in items:
 			self.items.remove(i)
 			i.assignment = None
 		self.addLog('instance items flushed')
@@ -167,7 +170,8 @@ class LocalInstance:
 
 	### flush thread items
 	def flush(self):
-		for i in self.items:
+		items = self.items[:]
+		for i in items:
 			self.items.remove(i)
 			i.assignment = None
 		self.addLog('instance items flushed')
@@ -249,7 +253,8 @@ class Job:
  			if len(self.rem()) == 0:
  				self.done = True
  				try: self.retProc()
- 				except: self.addLog('return delivery failed'.format(self.name))
+ 				except Exception as e:
+ 					self.addLog('return delivery failed with Exception: {0}'.format(e))
  				self.addLog('completed'.format(self.name))
  				del self.contr.jobs[self.name]
  				return(0)
@@ -266,7 +271,7 @@ class Job:
 
 		for i in self.items:
 			handle = open(self.ret + '/' + i.data.replace('/', '`'), 'w')
-			handle.write(i.done)
+			handle.write(i.done.encode('utf8'))
 			handle.close()
 		return(0)
 
@@ -386,7 +391,7 @@ class Controller:
 
 	def awsInitHelper(self, counter):
 		self.instances[counter] = AWSInstance(self, counter)
-		self.addLog(str(self.instances))
+
 
 
 Controller()

@@ -35,6 +35,7 @@ indexS = {'paused': paused, 'default': defaultSch}
 ### Works in time blocks of 5 seconds
 def defaultInst(inst):
 	tEnd = time.time() + 5
+	random.shuffle(inst.items)
 	while time.time() < tEnd and len(inst.items) > 0:
 		x = inst.items.pop(0)
 
@@ -51,8 +52,6 @@ def defaultInst(inst):
 
 
 def yelp(inst):
-	return(0)
-	'''
 	today = int(time.strftime('%d'))
 	hour = int(time.strftime('%H'))
 	minute = int(time.strftime('%M')) - (int(time.strftime('%M')) % 5)
@@ -77,30 +76,40 @@ def yelp(inst):
 	while time.time() < tEnd and len(inst.items) > 0:
 		x = inst.items.pop(0)
 		if x.job.name[:4] == 'yelp':
-			if inst.stats['datepull'] and inst.stats['hourpull'] and inst.stats['minpull'] and (minute > 10 or minute < 10):
-				time.sleep(random.randint(0,100))
+			if inst.stats['datepull'] and inst.stats['hourpull'] and inst.stats['minpull']:
+				time.sleep(random.randint(0,80))
 				try:
-					resultFromAWS = request(inst.pDNS, x.data)
+					resultFromAWS = inst.request(x.data)
 					x.done = resultFromAWS
 					x.assignment = None
 				except Exception as e:
-					print e
 					inst.items.append(x)
+					inst.addLog(str(e))
 					continue
 			else:
 				inst.items.append(x)
 				continue
 		try:
-			resultFromAWS = request(inst.pDNS, x.data)
+			resultFromAWS = inst.request(x.data)
 			x.done = resultFromAWS
 			x.assignment = None
 		except Exception as e:
 			inst.items.append(x)
-	return(0)'''
+			inst.addLog(str(e))
+	return(0)
+
+
+def cleanup(inst):
+	for i in inst.contr.jobs:
+		for j in inst.contr.jobs[i].items:
+			if j.done == False:
+				j.assignment = None
+	inst.mechI = 'paused'
+	sleep(5)
 
 
 ### Gives dictionary for access to instance behaviors
-indexI = {'paused': paused, 'default': defaultInst, 'yelp': yelp}
+indexI = {'paused': paused, 'default': defaultInst, 'yelp': yelp, 'cleanup': cleanup}
 
 
 

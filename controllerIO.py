@@ -93,11 +93,11 @@ class controllerIO:
 			c = self.stdscr.getch()
 			if c == ord(':'):
 				cmd = self.inTextBox.edit()
-				#try:
-				if self.runCmd(cmd.strip()) == 1:
-					self.contr.addLog('>> command invalid: {0}'.format(cmd))
-			#	except Exception as e:
-			#		self.contr.addLog('>> command encountered exception: {0}'.format(e))
+				try:
+					if self.runCmd(cmd.strip()) == 1:
+						self.contr.addLog('>> command invalid: {0}'.format(cmd))
+				except Exception as e:
+					self.contr.addLog('>> command encountered exception: {0}'.format(e))
 				self.inWin.erase()
 
 			if c == curses.KEY_RIGHT:
@@ -161,12 +161,13 @@ class controllerIO:
 
 	def dispSingleJob(self, job, y, x):
 		name = job.name[:54]
+		ret = job.ret[:52]
 		prog = 1 - float(len(job.rem()))/len(job.items)
 
 		self.mainWin.addstr(y, x, 'name: ', curses.A_BOLD)
 		self.mainWin.addstr(y, x + 6, name)
 		self.mainWin.addstr(y + 1, x, 'mechS: ' + job.mechS)
-		self.mainWin.addstr(y + 2, x, 'return: ' + job.ret)
+		self.mainWin.addstr(y + 2, x, 'return: ' + ret)
 		self.mainWin.addstr(y + 3, x, 'progress: ' + '{0}/{1}'.format(len(job.items) - len(job.rem()), len(job.items)))
 		self.mainWin.addstr(y + 4, x, progBar(prog, 60))
 		return(0)
