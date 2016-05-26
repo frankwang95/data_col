@@ -1,7 +1,6 @@
 import curses
 import curses.textpad
 import time
-import threading
 
 
 
@@ -65,6 +64,7 @@ class controllerIO:
 		self.instScrollState = 0
 
 		# SET WIN DIM
+		# windows should be at least 360 wide x 240 tall??
 		self.winH = self.stdscr.getmaxyx()[0]
 		self.winW = self.stdscr.getmaxyx()[1]
 
@@ -120,7 +120,18 @@ class controllerIO:
 	def dispLog(self):
 		logItems = [i[:self.winW] for i in self.contr.log[-(self.winH - 2):]]
 		for i in range(len(logItems)):
-			self.mainWin.addstr(i, 0, logItems[i])
+			try: self.mainWin.addstr(i, 0, logItems[i])
+			except Exception as e:
+				h = open('errorlog.txt', 'w')
+				str = '''ERROR: {0}
+PRINTED MESSAGE: {1}
+VERT INDEX: {2}
+HORZ INDEX: {3}
+WINDOW VERT SIZE: {4}
+WINDOW HORZ SIZE: {5}
+'''.format(e, logItems[i], len(logItems[i]), self.winH, self.winH)
+				h.write(str)
+				h.close()
 		return(0)
 
 

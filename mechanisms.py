@@ -9,7 +9,7 @@ from utils import hourodds, taggedPrintR
 
 #################### PAUSED BEHAVIOR ####################
 def paused(instJobContr):
-	#time.sleep(5)
+	time.sleep(1)
 	return(1)
 
 
@@ -34,6 +34,7 @@ indexS = {'paused': paused, 'default': defaultSch}
 ### Default scheduler completes jobs as quickly as possible
 ### Works in time blocks of 5 seconds
 def defaultInst(inst):
+#	time.sleep(random.randint(0,20) / 5)
 	tEnd = time.time() + 5
 	random.shuffle(inst.items)
 	while time.time() < tEnd and len(inst.items) > 0:
@@ -48,6 +49,12 @@ def defaultInst(inst):
 			inst.items.append(x)
 			inst.addLog(e)
 	return(0)
+
+
+def test(inst):
+	time.sleep(0.5)
+	inst.addLog('testing testing testing testing testing testing testing testing testing testing testing testing testing testing testing')
+	return(0)
 	
 
 
@@ -55,6 +62,8 @@ def yelp(inst):
 	today = int(time.strftime('%d'))
 	hour = int(time.strftime('%H'))
 	minute = int(time.strftime('%M')) - (int(time.strftime('%M')) % 5)
+
+	inst.stats['datepull'] = True
 
 	if inst.stats['date'] != today:
 		inst.stats['date'] = today
@@ -77,7 +86,7 @@ def yelp(inst):
 		x = inst.items.pop(0)
 		if x.job.name[:4] == 'yelp':
 			if inst.stats['datepull'] and inst.stats['hourpull'] and inst.stats['minpull']:
-				time.sleep(random.randint(0,80))
+				time.sleep(random.randint(0,10))
 				try:
 					resultFromAWS = inst.request(x.data)
 					x.done = resultFromAWS
@@ -96,6 +105,8 @@ def yelp(inst):
 		except Exception as e:
 			inst.items.append(x)
 			inst.addLog(str(e))
+
+	time.sleep(1)
 	return(0)
 
 
@@ -109,7 +120,7 @@ def cleanup(inst):
 
 
 ### Gives dictionary for access to instance behaviors
-indexI = {'paused': paused, 'default': defaultInst, 'yelp': yelp, 'cleanup': cleanup}
+indexI = {'paused': paused, 'default': defaultInst, 'yelp': yelp, 'cleanup': cleanup, 'test': test}
 
 
 

@@ -86,7 +86,7 @@ class AWSInstance:
 		return(0)
 
 
-	### adds message to the controller log
+	### Adds message to the controller log
 	def addLog(self, str):
 		self.contr.log.append(time.strftime("[%H:%M:%S] ", time.localtime()) + 'INSTANCE@{0}: {1}'.format(self.counter, str))
 		return(0)
@@ -119,7 +119,10 @@ class AWSInstance:
 	def request(self, html):
 		recieved = subprocess.check_output(['ssh', '-o', 'StrictHostKeyChecking=no',
 			'-i', 'datacol.pem', self.pDNS,
-			'python gethttp.py', html.replace('&', '\&'), '"{0}"'.format(ua.random)], stderr=subprocess.STDOUT)
+			'python gethttp.py', html.replace('&', '\&'), '"{0}"'.format(ua.random)],
+			stderr=subprocess.STDOUT,
+			stdin=subprocess.PIPE
+		)
 		return(recieved)
 
 
@@ -144,12 +147,12 @@ class LocalInstance:
 		threading.Thread(target = self.instThread).start()
 
 
-	### adds message to the controller log
+	### Adds message to the controller log
 	def addLog(self, str):
 		self.contr.log.append(time.strftime("[%H:%M:%S] ", time.localtime()) + 'INSTANCE@{0}: {1}'.format(self.counter, str))
 		return(0)
 
-	### main thread function
+	### Main thread function
 	def instThread(self):
 		while not self.contr.shutdownT:
 			time.sleep(2)
@@ -168,7 +171,7 @@ class LocalInstance:
 		return(0)
 
 
-	### flush thread items
+	### Flush thread items
 	def flush(self):
 		items = self.items[:]
 		for i in items:
@@ -177,7 +180,7 @@ class LocalInstance:
 		self.addLog('instance items flushed')
 		return(0)
 
-	### close this thread
+	### Close this thread
 	def close(self):
 		self.addLog('closing instance...')
 		del self.contr.instances[self.counter]
@@ -314,6 +317,7 @@ class Controller:
 			time.sleep(1)
 			try: mech.indexC[self.mech](self)
 			except: self.addLog('mechanism failure, please address and reload mechanisms')
+		return(0)
 
 
 	def addLog(self, str):
@@ -348,9 +352,10 @@ class Controller:
 			self.addLog('CONTROLLER: new job recieved: {0}'.format(x.name))
 		except Exception as e:
 			self.addLog('CONTROLLER: bad input or recv failure, closing connection: {0}'.format(e))
+		return(0)
 
 
-	########## Shutdown
+	########## Shutdown ##########
 	def shutdown(self):
 		self.addLog('shutting down NOW')
 		self.shutdownT = True
@@ -364,16 +369,17 @@ class Controller:
 		return(0)
 
 
-	########## Reload
+	########## Reload ##########
 	def relMech(self):
 		try:
 			reload(mech)
 			self.addLog('mechanism library reloaded')
 		except Exception as e:
 			self.addLog('mechanism reload failure with exception: {0}'.format(e))
+		return(0)
 
 
-	########## Initialize
+	########## Initialize Instances ##########
 	def initialize(self, type):
 		self.addLog('attempting to initialize {0} instance...'.format(type))
 		if type == 'local':
@@ -391,6 +397,7 @@ class Controller:
 
 	def awsInitHelper(self, counter):
 		self.instances[counter] = AWSInstance(self, counter)
+		return(0)
 
 
 
