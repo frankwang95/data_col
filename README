@@ -7,9 +7,10 @@ This library enables you to send jobs to any open `Controller` processes. Make y
 
 The primary function in the `client` library is `putget`:
 
-	`putget(data, name='default', mechS='paused', ret='default')`
+	`putget(data, port, name='default', mechS='paused', ret='default')`
 
 - `data` is a list of strings denoting urls to be sent to the controller
+- `port` is the port of the controller process to connect to
 - `name = 'default'` is a string which gives a name to the job. If input `'default'` is given, the job is given a numerical name.
 -  `mechS = 'paused` is a string which denotes the default assignment mechanism given to the job (see controller mechanisms below).
 - `ret = 'default'` is a string which denotes the default return method once the job is completed.
@@ -18,27 +19,33 @@ The primary function in the `client` library is `putget`:
 
 
 ##The Controller Instance
-The controller manages amazon web service instances. Jobs can be sent to the controller through the client library. Commands can be issued to a running controller instance. Use `return` to enter command mode. The section below details currently available commands.
+The controller manages amazon web service instances. Jobs can be sent to the controller through the client library. Commands can be issued to a running controller instance by using `Shift + :` to enter the command mode (similar to vim/emacs command input). The section below details currently available commands. Use the arrow keys to navigate between different panels.
 
 The controller gives names to each instance and job it is currently managing. Instances are given numerical names for reference in  the order that they were created. Jobs are follow the same naming convention but jobs can also be given names when they are sent to the controller instance as an function argument.
 
 
 ###Controller Commands
-- port - get port number for in/out
 - shutdown - shutdown the controller instance
 - reload - reload mechanisms library
 - instance
-	- *[no args]* - prints all open instances
-	- initialize *n* - creates n new instances
-	- close *[n]* - closes all instances given in *[n]*
+	- initialize *instance type* - creates a new instances of specified type
+	- close *n* - closes instance with id `n`
 	- mech *n m* - assignments mechanism `m` to instance `n`
 	- flush *n* - returns all items of instance `n` for reassignment
-	- stats *n* - displays current stats for instance `n`
-- job
-	- *[no args]* - prints all open jobs
-	- mech *n m* - assigns mechanism `m` to job with name `n`
--controller
-	- *n* - assigns mechanism n to the main controller process.
 
+###Instance Types
+- local
+- aws
+
+###Instance Mechanisms
+
+###Job Mechanisms
 
 ###Controller Mechanisms
+
+
+##ToDo List
+- allow for job changing
+- add tab for general controller stats
+- implement opening of different aws instance types
+- implement opening of instances from different remote services
