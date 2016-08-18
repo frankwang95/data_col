@@ -1,5 +1,6 @@
 import time
 import threading
+import ast
 import socket
 import os
 import boto3
@@ -11,7 +12,7 @@ import fabric.api as fab
 import fabric
 
 from utils import key, ua, snd, recv, ioLock
-import mechanisms as mech
+import mechanisms
 import controllerIO
 
 
@@ -34,7 +35,7 @@ class AWSInstance:
 		self.contr = contr
 		self.counter = counter
 		self.type = 'aws'
-		self.mechI = 'paused'
+		self.mech = 'paused'
 		self.stats = {'date': None, 'hour': None, 'min': None}
 		self.items = []
 
@@ -80,7 +81,7 @@ class AWSInstance:
 					self.flush()
 					self.flushCmd = False
 			
-			try: mech.indexI[self.mechI](self)
+			try: mechanisms.indexI[self.mech](self)
 			except Exception as e:
 				self.addLog('mechanism failure: {0}'.format(e))
 		return(0)
@@ -110,20 +111,24 @@ class AWSInstance:
 		self.addLog('instance closed successfully')
 
 
-	def changeMech(self, newMech):
-		self.mechI = newMech
-		self.addLog('instance mech changed to: {0}'.format(newMech))
+	def changeMech(self, mech):
+		self.mech = mech
+		self.addLog('instance mech changed to: {0}'.format(mech))
 		return(0)
 
 
-	def request(self, html):
+	def request(self, item):
 		recieved = subprocess.check_output(['ssh', '-o', 'StrictHostKeyChecking=no',
 			'-i', 'datacol.pem', self.pDNS,
-			'python gethttp.py', html.replace('&', '\&'), '"{0}"'.format(ua.random)],
+			'python gethttp.py', item.html.replace('&', '\&'), '"{0}"'.format(ua.random)],
 			stderr=subprocess.STDOUT,
 			stdin=subprocess.PIPE
 		)
-		return(recieved)
+		item.data = recieved.decode('unicode-escape')
+		item.time = time.time()
+		item.assignment = None
+		item.done = True
+		return(0)
 
 
 
@@ -132,7 +137,7 @@ class LocalInstance:
 		self.type = 'local'
 		self.contr = contr
 		self.counter = counter
-		self.mechI = 'paused'
+		self.mech = 'paused'
 		self.stats = {}
 		self.items = []
 
@@ -165,7 +170,7 @@ class LocalInstance:
 					self.flush()
 					self.flushCmd = False
 	
-				try: mech.indexI[self.mechI](self)
+				try: mechanisms.indexI[self.mech](self)
 				except Exception as e:
 					self.addLog('mechanism failure: {0}'.format(e))
 		return(0)
@@ -190,38 +195,45 @@ class LocalInstance:
 		return(0)
 
 
-	def request(self, link):
-		return(requests.get(link).text)
+	def request(self, item):
+		recieved = requests.get(item.html).text
+		item.data = recieved
+		item.time = time.time()
+		item.assignment = None
+		item.done = True
+		return(0)
 
 
-	def changeMech(self, newMech):
+	def changeMech(self, mech):
 		#maybe check for validity
-		self.mechI = newMech
-		self.addLog('instance mech changed to: {0}'.format(newMech))
+		self.mech = mech
+		self.addLog('instance mech changed to: {0}'.format(mech))
 		return(0)
 
 
 
 ###################### ITEM CLASS ######################
 class Item:
-	def __init__(self, job, data, assgn = None):
+	def __init__(self, job, html, assgn = None):
 		self.done = False
 		self.job = job
-		self.data = data
+		self.html = html
 		self.assignment = assgn
+		self.data = None
+		self.time = None
 
 
 
 ###################### JOB CLASS ######################
 class Job:
-	def __init__(self, contr, conn, name, mechS, ret, data):
+	def __init__(self, contr, conn, name, mech, htmlL, tags):
 		self.done = False
 		self.contr = contr
 		self.conn = conn
 		self.name = name
-		self.mechS = mechS
-		self.ret = ret
-		self.items = [Item(self, i) for i in data]
+		self.mech = mech
+		self.tags = tags
+		self.items = [Item(self, i) for i in htmlL]
 
 		threading.Thread(target = self.jobThread).start()
 
@@ -234,6 +246,12 @@ class Job:
 	## Gives number of unassigned items
 	def unassn(self):
 		return([i for i in self.items if i.assignment == None and i.done == False])
+
+
+	def changeMech(self, mech):
+		self.mech = mech
+		self.contr.addLog('job mech changed to: ' + mech)
+		return(0)
 
 
 	### Adds message to the controller log
@@ -249,7 +267,7 @@ class Job:
 
 			if len(self.contr.instances) > 0 and len(self.unassn()) > 0:
  				try:
- 					code = mech.indexS[self.mechS](self)
+ 					code = mechanisms.indexJ[self.mech](self)
 					if code == 0: self.addLog('assigned jobs'.format(self.name))
  				except Exception as e: self.addLog('mechanism failure: {0}'.format(e))
 
@@ -266,16 +284,11 @@ class Job:
 
 	### Function that performs task of returning completed jobs to specified targets
 	def retProc(self):
-		if self.ret == 'default':
-			returnPackage = str([(i.data, i.done) for i in self.items])
-			snd(self.conn, returnPackage)
-			self.conn.close()
-			return(0)
-
-		for i in self.items:
-			handle = open(self.ret + '/' + i.data.replace('/', '`'), 'w')
-			handle.write(i.done.encode('utf8'))
-			handle.close()
+		returnPackage = str([[i.html, i.time, i.data.encode('unicode-escape')] for i in self.items])
+		snd(self.conn, returnPackage)
+		self.conn.shutdown(socket.SHUT_RDWR)
+		self.conn.close()
+		return(0)
 		return(0)
 
 
@@ -285,6 +298,7 @@ class Controller:
 	def __init__ (self):
 		self.shutdownT = False
 		self.jobs = {}
+		self.tagHash = {}
 		self.instances = {}
 		self.mech = 'paused'
 		self.instanceCounter = 0
@@ -315,7 +329,7 @@ class Controller:
 	def mainControllerThread(self):
 		while not self.shutdownT:
 			time.sleep(1)
-			try: mech.indexC[self.mech](self)
+			try: mechanisms.indexC[self.mech](self)
 			except: self.addLog('mechanism failure, please address and reload mechanisms')
 		return(0)
 
@@ -329,7 +343,7 @@ class Controller:
 	def ioIn(self):
 		while not self.shutdownT:
 			(conn, addr) = self.ioSocket.accept()
-			self.addLog('CONTROLLER: connection made with: ' + str(addr))
+			self.addLog('connection made with: ' + str(addr))
 			conn.settimeout(None)
 			threading.Thread(target = self.ioInSub, args = (conn,)).start()
 		return(0)
@@ -339,19 +353,25 @@ class Controller:
 		recievedIn = recv(conn)
 		if recievedIn == 1: return(1)
 		recievedIn = recievedIn.split()
-		name = recievedIn[0]
-		if name == 'default':
-			name = str(self.jobCounter)
-			self.jobCounter += 1
-		mechS = recievedIn[1]
-		ret = recievedIn[2]
-		data = recievedIn[3:]
 		try:
-			x = Job(self, conn, name, mechS, ret, data)
+			name = recievedIn[0]
+			if name == 'default':
+				name = str(self.jobCounter)
+				self.jobCounter += 1
+			mech = recievedIn[1]
+			tags = ast.literal_eval(recievedIn[2])
+			htmlL = recievedIn[3:]
+
+			x = Job(self, conn, name, mech, htmlL, tags)
 			self.jobs[name] = x
-			self.addLog('CONTROLLER: new job recieved: {0}'.format(x.name))
+			for i in tags:
+				if i not in self.tagHash: self.tagHash[i] = []
+				self.tagHash[i].append(x)
+			self.addLog('new job recieved: {0}'.format(x.name))
 		except Exception as e:
-			self.addLog('CONTROLLER: bad input or recv failure, closing connection: {0}'.format(e))
+			self.addLog('bad input or recv failure, closing connection: {0}'.format(recievedIn[3]))
+			conn.shutdown(socket.SHUT_RDWR)
+			conn.close()
 		return(0)
 
 
@@ -372,7 +392,7 @@ class Controller:
 	########## Reload ##########
 	def relMech(self):
 		try:
-			reload(mech)
+			reload(mechanisms)
 			self.addLog('mechanism library reloaded')
 		except Exception as e:
 			self.addLog('mechanism reload failure with exception: {0}'.format(e))
@@ -397,6 +417,12 @@ class Controller:
 
 	def awsInitHelper(self, counter):
 		self.instances[counter] = AWSInstance(self, counter)
+		return(0)
+
+
+	def changeMech(self, mech):
+		self.mech = mech
+		self.addLog('controller mech changed to: {0}'.format(mech))
 		return(0)
 
 

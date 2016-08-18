@@ -1,37 +1,44 @@
-#DataCol Documentation
-The following library gives the framework for a running instance which manages EC2 instances. Currently, the library is written with the purpose of managing instances for the purpose of web scraping. However, the implementation is designed so that expanding the libraries versatility can be done at a later time. 
+# DataCol Documentation
+The following library gives the framework for managing data scraping through remote and local instances. Currently the package only supports AWS EC2 instances but future support is coming soon. The library works under a structure in which instances can be automatically (or manually) started and closed in order to provide a broader pool of IP addresses with which one can discretely scrape web-data. To save on remote instance costs, this application allows many scraping projects to share a single pool of instances in order to save on costs.
+
+Instances, Jobs, and the Scheduler can be ascribed different behavior mechanisms which determine the rules by which requests are made, jobs are distributed among instances, and instances are opened and closed. These behaviors can be found in the file `mechanisms.py` and can be reloaded dynamically without downtime.
 
 
-##The Client Library
-This library enables you to send jobs to any open `Controller` processes. Make you you set the global variable to the port opened by the Controller you wish to connect with.
 
-The primary function in the `client` library is `putget`:
+## The Client Library
+This library enables you to send jobs to any open `Controller` processes. The primary function in the `client` library is `putget`:
 
-	`putget(data, port, name='default', mechS='paused', ret='default')`
+	`putget(data, port, ip = 'localhost', name = 'default', mechS = 'paused', ret = 'default', tags = [])`
 
-- `data` is a list of strings denoting urls to be sent to the controller
-- `port` is the port of the controller process to connect to
+- `data` is a list of strings denoting urls to be sent to the controller.
+- `port` is the port of the controller process you wish to connect to.
+- `ip` is the ip-address for the controller process you wish to connect to.
 - `name = 'default'` is a string which gives a name to the job. If input `'default'` is given, the job is given a numerical name.
--  `mechS = 'paused` is a string which denotes the default assignment mechanism given to the job (see controller mechanisms below).
+- `mechS = 'paused` is a string which denotes the default assignment mechanism given to the job (see controller mechanisms below).
 - `ret = 'default'` is a string which denotes the default return method once the job is completed.
-	- `'default'` results in the the function `putget` return the result of the controller's work
-	- Otherwise, you may enter a string as a filepath for this argument and the controller will write the results to files at that path.
+	- `'default'` results in the the function `putget` return the result of the controller's work.
+	- Otherwise, you may enter a string which corresponds to a filepath for this argument and the controller will write the results to files at that path.
+- `tags = []` is a list of tags which will be attributed to the job when it is recieved by the controller. This is used to manage different instance behaviors 
 
 
-##The Controller Instance
-The controller manages amazon web service instances. Jobs can be sent to the controller through the client library. Commands can be issued to a running controller instance by using `Shift + :` to enter the command mode (similar to vim/emacs command input). The section below details currently available commands. Use the arrow keys to navigate between different panels.
 
-The controller gives names to each instance and job it is currently managing. Instances are given numerical names for reference in  the order that they were created. Jobs are follow the same naming convention but jobs can also be given names when they are sent to the controller instance as an function argument.
+## The Controller Instance
+The controller is the main process, managing instances and jobs. Jobs can be sent to the controller through the client library which is documented above. Moreover, one can navigate between the informational tabs `Log`, `Instances`, and `Jobs` using the arrow keys. Finally, commands can be issued to a running controller instance by using `Shift + :` to enter the command mode (similar to vim/emacs command input). The section below details currently available commands. Use the arrow keys to navigate between different panels.
 
+The controller gives names to each instance and job it is currently managing. Instances are given numerical names for reference in the order that they were created. Jobs are follow the same naming convention but jobs can also be given names when they are sent to the controller instance as an function argument.
 
-###Controller Commands
+### Controller Commands
 - shutdown - shutdown the controller instance
 - reload - reload mechanisms library
 - instance
 	- initialize *instance type* - creates a new instances of specified type
-	- close *n* - closes instance with id `n`
-	- mech *n m* - assignments mechanism `m` to instance `n`
-	- flush *n* - returns all items of instance `n` for reassignment
+	- close *n* - closes instance with id *n*
+	- mech *n m* - assigns mechanism *m* to instance *n*
+	- flush *n* - returns all items of instance *n* for reassignment
+- job
+	- mech *n m* - assigns mechanism *m* to job *n*
+- controller
+	- mech *m* - assigns mechanism *m* to the controller
 
 ###Instance Types
 - local

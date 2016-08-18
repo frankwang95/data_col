@@ -14,9 +14,9 @@ def paused(instJobContr):
 
 
 
-#################### SECHDULER BEHAVIORS ####################
+#################### JOB BEHAVIORS ####################
 ### Default scheduler simply assigns jobs to random instances
-def defaultSch(job):
+def defaultJob(job):
 	for i in job.unassn():
 		instance = job.contr.instances[random.choice(job.contr.instances.keys())]
 		i.assignment = instance
@@ -26,36 +26,24 @@ def defaultSch(job):
 
 
 ### Gives dictionary for access to scheduler behaviors
-indexS = {'paused': paused, 'default': defaultSch}
+indexJ = {'paused': paused, 'default': defaultJob}
 
 
 
 #################### INSTANCE BEHAVIORS ####################
-### Default scheduler completes jobs as quickly as possible
-### Works in time blocks of 5 seconds
+### Default scheduler completes jobs as quickly as possible, working in time blocks of 5 seconds at a time
 def defaultInst(inst):
-#	time.sleep(random.randint(0,20) / 5)
 	tEnd = time.time() + 5
 	random.shuffle(inst.items)
 	while time.time() < tEnd and len(inst.items) > 0:
 		x = inst.items.pop(0)
 
-		try:
-			resutltFromAWS = inst.request(x.data)
-			x.done = resutltFromAWS
-			x.assignment = None
+		try: resutltFromAWS = inst.request(x)
 
 		except Exception as e:
 			inst.items.append(x)
 			inst.addLog(e)
 	return(0)
-
-
-def test(inst):
-	time.sleep(0.5)
-	inst.addLog('testing testing testing testing testing testing testing testing testing testing testing testing testing testing testing')
-	return(0)
-	
 
 
 def yelp(inst):
@@ -110,33 +98,19 @@ def yelp(inst):
 	return(0)
 
 
-def cleanup(inst):
-	for i in inst.contr.jobs:
-		for j in inst.contr.jobs[i].items:
-			if j.done == False:
-				j.assignment = None
-	inst.mechI = 'paused'
-	sleep(5)
-
-
 ### Gives dictionary for access to instance behaviors
-indexI = {'paused': paused, 'default': defaultInst, 'yelp': yelp, 'cleanup': cleanup, 'test': test}
+indexI = {'paused': paused, 'default': defaultInst}
 
 
 
 #################### CONTROLLER BEHAVIORS ####################
-def defaultContr(contr):
-	time.sleep(5)
-	return(0)
-
-
 def hourlyCycle(contr):
 	try:
 		t = datetime.datetime.now()
 		if t.minute == 0:
 			contr.initialize(n = 5)
 			for i in contr.awsI:
-				contr.awsI[i].mechI = 'yelp'
+				contr.awsI[i].mech = 'yelp'
 				contr.awsI[i].flush()
 			return(0)
 		if t.minute == 20:
@@ -150,4 +124,4 @@ def hourlyCycle(contr):
 	return(0)
 
 
-indexC = {'paused': paused, 'default': defaultContr, 'hourly': hourlyCycle}
+indexC = {'paused': paused}

@@ -49,10 +49,13 @@ class controllerIO:
 		curses.cbreak()
 
 		# SET COLORS
-		curses.start_color()
-		curses.init_color(20, 400, 400, 400);
 		# unselected tab
-		curses.init_pair(1, curses.COLOR_BLACK, 20)
+		curses.start_color()
+		try:
+			curses.init_color(20, 400, 400, 400)
+			curses.init_pair(1, curses.COLOR_BLACK, 20)
+		except:
+			curses.init_pair(1,curses.COLOR_WHITE, curses.COLOR_BLACK)
 		# selected tab
 		curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_WHITE)
 
@@ -152,7 +155,7 @@ WINDOW HORZ SIZE: {5}
 		self.mainWin.addstr(y, x, 'counter: ', curses.A_BOLD)
 		self.mainWin.addstr(y, x + 9, str(inst.counter))
 		self.mainWin.addstr(y + 1, x, 'type: ' + inst.type)
-		self.mainWin.addstr(y + 2, x, 'mechI: ' + inst.mechI)
+		self.mainWin.addstr(y + 2, x, 'mech: ' + inst.mech)
 		self.mainWin.addstr(y + 3, x, 'items pending: ' + str(len(inst.items)))
 		return(0)
 
@@ -172,13 +175,12 @@ WINDOW HORZ SIZE: {5}
 
 	def dispSingleJob(self, job, y, x):
 		name = job.name[:54]
-		ret = job.ret[:52]
 		prog = 1 - float(len(job.rem()))/len(job.items)
 
 		self.mainWin.addstr(y, x, 'name: ', curses.A_BOLD)
 		self.mainWin.addstr(y, x + 6, name)
-		self.mainWin.addstr(y + 1, x, 'mechS: ' + job.mechS)
-		self.mainWin.addstr(y + 2, x, 'return: ' + ret)
+		self.mainWin.addstr(y + 1, x, 'mech: ' + job.mech)
+		self.mainWin.addstr(y + 2, x, 'tags: ' + ', '.join(job.tags))
 		self.mainWin.addstr(y + 3, x, 'progress: ' + '{0}/{1}'.format(len(job.items) - len(job.rem()), len(job.items)))
 		self.mainWin.addstr(y + 4, x, progBar(prog, 60))
 		return(0)
@@ -215,4 +217,15 @@ WINDOW HORZ SIZE: {5}
 			if cmdspl[1] =='mech':
 				self.contr.instances[int(cmdspl[2])].changeMech(cmdspl[3])
 				return(0)
+
+		if cmdspl[0] == 'job':
+			if cmdspl[1] == 'mech':
+				self.contr.jobs[cmdspl[2]].changeMech(cmdspl[3])
+				return(0)
+
+		if cmdspl[0] == 'controller':
+			if cmdspl[1] == 'mech':
+				self.contr.changeMech(cmdspl[2])
+				return(0)
+
 		return(1)
