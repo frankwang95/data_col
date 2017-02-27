@@ -20,6 +20,6 @@ def putget(data, port, ip = 'localhost', name = 'default', mech = 'paused', tags
 	retOut = recv(s)
 	retOut = ast.literal_eval(retOut)
 	for i in retOut:
-		i[2] = i[2].decode('unicode-escape')
+		i[2] = i[2].decode('utf-8')
 	s.close()
 	return(retOut)

@@ -11,7 +11,7 @@ from fake_useragent import UserAgent
 import fabric.api as fab
 import fabric
 
-from utils import key, ua, snd, recv, ioLock
+from utils import key, snd, recv, ioLock, ua
 import mechanisms
 import controllerIO
 
@@ -120,11 +120,11 @@ class AWSInstance:
 	def request(self, item):
 		recieved = subprocess.check_output(['ssh', '-o', 'StrictHostKeyChecking=no',
 			'-i', 'datacol.pem', self.pDNS,
-			'python gethttp.py', item.html.replace('&', '\&'), '"{0}"'.format(ua.random)],
+			'python gethttp.py', item.html.replace('&', '\&'), '""'.format(ua)],
 			stderr=subprocess.STDOUT,
 			stdin=subprocess.PIPE
 		)
-		item.data = recieved.decode('unicode-escape')
+		item.data = recieved.decode('utf-8')
 		item.time = time.time()
 		item.assignment = None
 		item.done = True
@@ -284,7 +284,7 @@ class Job:
 
 	### Function that performs task of returning completed jobs to specified targets
 	def retProc(self):
-		returnPackage = str([[i.html, i.time, i.data.encode('unicode-escape')] for i in self.items])
+		returnPackage = str([[i.html, i.time, i.data.encode('utf-8')] for i in self.items])
 		snd(self.conn, returnPackage)
 		self.conn.shutdown(socket.SHUT_RDWR)
 		self.conn.close()

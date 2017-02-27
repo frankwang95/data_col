@@ -2,13 +2,12 @@ import socket
 import time
 import subprocess
 import threading
-from fake_useragent import UserAgent
 
 
 
 #################### GETTING REQUESTS ####################
 key = 'datacol'
-ua = UserAgent()
+ua = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_2) AppleWebKit/601.3.9 (KHTML, like Gecko) Version/9.0.2 Safari/601.3.9'
 
 
 

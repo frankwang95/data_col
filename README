@@ -52,7 +52,6 @@ The controller gives names to each instance and job it is currently managing. In
 
 
 ##ToDo List
-- allow for job changing
 - add tab for general controller stats
 - implement opening of different aws instance types
 - implement opening of instances from different remote services

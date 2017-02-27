@@ -121,18 +121,14 @@ class controllerIO:
 
 
 	def dispLog(self):
-		logItems = [i[:self.winW] for i in self.contr.log[-(self.winH - 2):]]
+		logItems = [i[:self.winW-1] for i in self.contr.log[-(self.winH - 2):]]
 		for i in range(len(logItems)):
 			try: self.mainWin.addstr(i, 0, logItems[i])
 			except Exception as e:
 				h = open('errorlog.txt', 'w')
 				str = '''ERROR: {0}
 PRINTED MESSAGE: {1}
-VERT INDEX: {2}
-HORZ INDEX: {3}
-WINDOW VERT SIZE: {4}
-WINDOW HORZ SIZE: {5}
-'''.format(e, logItems[i], len(logItems[i]), self.winH, self.winH)
+'''.format(e, logItems[i])
 				h.write(str)
 				h.close()
 		return(0)
