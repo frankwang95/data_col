@@ -1,6 +1,7 @@
 import curses
 import curses.textpad
 import time
+from instances import *
 
 
 
@@ -211,7 +212,7 @@ PRINTED MESSAGE: {1}
 				self.contr.instances[int(cmdspl[2])].flushCmd = True
 				return(0)
 			if cmdspl[1] =='mech':
-				self.contr.instances[int(cmdspl[2])].changeMech(cmdspl[3])
+				changeMech(self.contr.instances[int(cmdspl[2])], cmdspl[3])
 				return(0)
 
 		if cmdspl[0] == 'job':

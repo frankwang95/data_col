@@ -6,8 +6,10 @@ import threading
 
 
 #################### GETTING REQUESTS ####################
-key = 'datacol'
+aws_key = './keys/datacol.pem'
+csil_pass = None
 ua = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_2) AppleWebKit/601.3.9 (KHTML, like Gecko) Version/9.0.2 Safari/601.3.9'
+
 
 
 
@@ -48,19 +50,4 @@ ioLock = threading.Lock()
 def taggedPrintR(str):
 	with ioLock: print(time.strftime("[%H:%M:%S] ", time.localtime()) + str)
 	return(0)
-
-
-
-#################### MECHANISM UTILITIES ####################
-def hourodds(h):
-	odds = [40, 40, 30, 30, 40, 40,
-	#		 0,  1,  2,  3,  4,  5,
-		50, 70, 90, 70, 50, 50,
-	#	 6,  7,  8,  9, 10, 11,
-		70, 90, 70, 50, 70, 80,
-	#	12, 13, 14, 15, 16, 17
-		95, 80, 70, 50, 50, 50]
-	#	18, 19, 20, 21, 22, 23
-	return(odds[h])
-
 

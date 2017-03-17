@@ -3,7 +3,7 @@ import time
 import requests
 import datetime
 import threading
-from utils import hourodds, taggedPrintR
+from utils import taggedPrintR
 
 
 
@@ -25,7 +25,6 @@ def defaultJob(job):
 	return(0)
 
 
-### Gives dictionary for access to scheduler behaviors
 indexJ = {'paused': paused, 'default': defaultJob}
 
 
@@ -46,59 +45,6 @@ def defaultInst(inst):
 	return(0)
 
 
-def yelp(inst):
-	today = int(time.strftime('%d'))
-	hour = int(time.strftime('%H'))
-	minute = int(time.strftime('%M')) - (int(time.strftime('%M')) % 5)
-
-	inst.stats['datepull'] = True
-
-	if inst.stats['date'] != today:
-		inst.stats['date'] = today
-		inst.stats['datepull'] = True
-		if random.randint(1,10) == 1: inst.stats['datepull'] = False
-
-	if inst.stats['hour'] != hour:
-		inst.stats['hour'] = hour
-		inst.stats['hourpull'] = False
-		if random.randint(1,100) < hourodds(hour): inst.stats['hourpull'] = True
-
-	if inst.stats['min'] != minute:
-		inst.stats['min'] = minute
-		inst.stats['minpull'] = False
-		if random.randint(1,100) < 70: inst.stats['minpull'] = True
-
-	random.shuffle(inst.items)
-	tEnd = time.time() + 20
-	while time.time() < tEnd and len(inst.items) > 0:
-		x = inst.items.pop(0)
-		if x.job.name[:4] == 'yelp':
-			if inst.stats['datepull'] and inst.stats['hourpull'] and inst.stats['minpull']:
-				time.sleep(random.randint(0,10))
-				try:
-					resultFromAWS = inst.request(x.data)
-					x.done = resultFromAWS
-					x.assignment = None
-				except Exception as e:
-					inst.items.append(x)
-					inst.addLog(str(e))
-					continue
-			else:
-				inst.items.append(x)
-				continue
-		try:
-			resultFromAWS = inst.request(x.data)
-			x.done = resultFromAWS
-			x.assignment = None
-		except Exception as e:
-			inst.items.append(x)
-			inst.addLog(str(e))
-
-	time.sleep(1)
-	return(0)
-
-
-### Gives dictionary for access to instance behaviors
 indexI = {'paused': paused, 'default': defaultInst}
 
 
