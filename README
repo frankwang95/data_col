@@ -20,6 +20,8 @@ This library enables you to send jobs to any open `Controller` processes. The pr
 	- Otherwise, you may enter a string which corresponds to a filepath for this argument and the controller will write the results to files at that path.
 - `tags = []` is a list of tags which will be attributed to the job when it is recieved by the controller. This is used to manage different instance behaviors 
 
+Returns a list of tuples of the form (`url`, `time`, `html`).
+
 
 
 ## The Controller Instance

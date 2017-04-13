@@ -27,16 +27,6 @@ def progBar(perc, l):
 
 
 ###################### MAIN CLASSES ######################
-class ioState:
-	def __init__(self, contr):
-		self.winTabs = ['Log', 'Instances', 'Jobs']
-		self.currTab = 0
-		self.logScrollState = 0
-		self.jobScrollState = 0
-		self.instScrollState = 0
-
-
-
 class controllerIO:
 	def __init__(self, contr):
 		self.contr = contr
@@ -61,7 +51,7 @@ class controllerIO:
 		curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_WHITE)
 
 		# SET PARAMETERS
-		self.winTabs = ['Log', 'Instances', 'Jobs']
+		self.winTabs = ['Log', 'Instances', 'Jobs', 'Status']
 		self.currTab = 0
 		self.logScrollState = 0
 		self.jobScrollState = 0

@@ -71,12 +71,12 @@ class Job:
  				except Exception as e: self.addLog('mechanism failure: {0}'.format(e))
 
  			if len(self.rem()) == 0:
+ 				del self.contr.jobs[self.name]
  				self.done = True
  				try: self.retProc()
  				except Exception as e:
  					self.addLog('return delivery failed with Exception: {0}'.format(e))
  				self.addLog('completed'.format(self.name))
- 				del self.contr.jobs[self.name]
  				return(0)
 		return(0)
 
@@ -129,7 +129,8 @@ class Controller:
 		while not self.shutdownT:
 			time.sleep(1)
 			try: mechanisms.indexC[self.mech](self)
-			except: self.addLog('mechanism failure, please address and reload mechanisms')
+			except Exception as e:
+				self.addLog('mechanism failure, please address and reload mechanisms: {0}'.format(e))
 		return(0)
 
 

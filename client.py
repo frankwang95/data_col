@@ -9,6 +9,8 @@ from utils import snd, recv
 # mechS - See mechanisms.py
 # ret - 'default', 'pathtowrite'
 def putget(data, port, ip = 'localhost', name = 'default', mech = 'paused', tags = []):
+	if len(data) == 0: return([])
+	
 	if mech not in mechanisms.indexJ:
 		print('mechS argument invalid, putget failed')
 		return(1)

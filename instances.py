@@ -6,13 +6,13 @@ import threading
 import time
 
 import mechanisms
-from utils import aws_key, csil_pass, ua
+from utils import aws_key, csil_pass
 
 
 
 ################ FAB FUNCTIONS FOR AWS ################
 fab.env.user = 'ubuntu'
-fab.env.key_filename = key
+fab.env.key_filename = aws_key
 fabric.state.output['running'] = False
 
 
@@ -59,7 +59,7 @@ class CsilInstance:
 		self.closeCmd = False
 		self.flushCmd = False
 
-		addLog(self, 'CSIL instance initialized')
+		self.addLog('CSIL instance initialized')
 		threading.Thread(target = self.instThread).start()
 
 
@@ -73,28 +73,28 @@ class CsilInstance:
 					return(0)
 
 				if self.flushCmd:
-					flush(self)
+					self.flush()
 					self.flushCmd = False
 			
 			try: mechanisms.indexI[self.mech](self)
 			except Exception as e:
-				addLog(self, 'mechanism failure: {0}'.format(e))
+				self.addLog('mechanism failure: {0}'.format(e))
 		return(0)
 
 
 	def close(self):
-		addLog(self, 'closing instance')
+		self.addLog('closing instance')
 		del self.contr.instances[self.counter]
 		time.sleep(10) # to make sure job processes are no longer writing to this process
-		flush(self)
-		addLog(self, 'instance closed successfully')
+		self.flush()
+		self.addLog('instance closed successfully')
 
 
 	def request(self, item):
 		sshstr = 'fkwang@' + self.address + '.cs.uchicago.edu'
 		recieved = subprocess.check_output(['sshpass', '-p', csil_pass, 'ssh', sshstr,
 			'-o', 'StrictHostKeyChecking=no',
-			'python gethttp.py', item.html.replace('&', '\&'), '""'.format(ua)],
+			'python gethttp.py', '"{0}"'.format(item.html), '"{0}"'.format(mechanisms.ua)],
 			stderr=subprocess.STDOUT,
 			stdin=subprocess.PIPE
 		)
@@ -103,6 +103,11 @@ class CsilInstance:
 		item.assignment = None
 		item.done = True
 		return(0)
+
+
+	def addLog(self, str): return(addLog(self, str))
+	def flush(self): return(flush(self))
+	def changeMech(self, mech): return(changeMech(self, mech))
 
 
 
@@ -132,12 +137,12 @@ class AWSInstance:
 		self.inst.create_tags(Tags=[{'Key':'Name', 'Value': 'datcol'}])
 		self.pDNS = 'ubuntu@' + self.inst.public_dns_name
 
-		addLog(self, 'loading dependencies to server...')
+		self.addLog('loading dependencies to server...')
 		time.sleep(60)
 		self.inst.load()
 		fab.execute(prep, hosts = [self.pDNS])
 
-		addLog(self, 'aws instance initialized')	
+		self.addLog('aws instance initialized')	
 		threading.Thread(target = self.instThread).start()
 
 
@@ -151,28 +156,28 @@ class AWSInstance:
 					return(0)
 
 				if self.flushCmd:
-					flush(self)
+					self.flush()
 					self.flushCmd = False
 			
 			try: mechanisms.indexI[self.mech](self)
 			except Exception as e:
-				addLog(self, 'mechanism failure: {0}'.format(e))
+				self.addLog('mechanism failure: {0}'.format(e))
 		return(0)
 
 
 	def close(self):
-		addLog(self, 'closing instance')
+		self.addLog('closing instance')
 		del self.contr.instances[self.counter]
 		self.inst.terminate()
 		time.sleep(10) # to make sure job processes are no longer writing to this process
-		flush(self)
-		addLog(self, 'instance closed successfully')
+		self.flush()
+		self.addLog('instance closed successfully')
 
 
 	def request(self, item):
 		recieved = subprocess.check_output(['ssh', '-o', 'StrictHostKeyChecking=no',
 			'-i', key, self.pDNS,
-			'python gethttp.py', item.html.replace('&', '\&'), '""'.format(ua)],
+			'python gethttp.py', '"{0}"'.format(item.html), '"{0}"'.format(mechanisms.ua)],
 			stderr=subprocess.STDOUT,
 			stdin=subprocess.PIPE
 		)
@@ -181,6 +186,11 @@ class AWSInstance:
 		item.assignment = None
 		item.done = True
 		return(0)
+
+
+	def addLog(self, str): return(addLog(self, str))
+	def flush(self): return(flush(self))
+	def changeMech(self, mech): return(changeMech(self, mech))
 
 
 
@@ -199,7 +209,7 @@ class LocalInstance:
 		self.closeCmd = False
 		self.flushCmd = False
 
-		addLog(self, 'local instance initialized')
+		self.addLog('local instance initialized')
 
 		threading.Thread(target = self.instThread).start()
 
@@ -214,7 +224,7 @@ class LocalInstance:
 					self.close()
 					return(0)
 				if self.flushCmd:
-					flush(self)
+					self.flush()
 					self.flushCmd = False
 	
 				try: mechanisms.indexI[self.mech](self)
@@ -228,7 +238,7 @@ class LocalInstance:
 		addLog(self, 'closing instance...')
 		del self.contr.instances[self.counter]
 		time.sleep(5)
-		self.flush()
+		flush(self)
 		addLog(self, 'instance closed successfully')
 		return(0)
 
@@ -240,4 +250,9 @@ class LocalInstance:
 		item.assignment = None
 		item.done = True
 		return(0)
+
+
+	def addLog(self, str): return(addLog(self, str))
+	def flush(self): return(flush(self))
+	def changeMech(self, mech): return(changeMech(self, mech))
 
