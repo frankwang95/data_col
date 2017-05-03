@@ -34,7 +34,6 @@ def defaultJob(job):
 indexJ = {'paused': paused, 'default': defaultJob}
 
 
-
 #################### INSTANCE BEHAVIORS ####################
 ### Default scheduler completes jobs as quickly as possible, working in time blocks of 5 seconds at a time
 def defaultInst(inst):
@@ -50,7 +49,7 @@ def defaultInst(inst):
 
 
 def yelp(inst):
-	if random.randint(1, 1000) == 1000 and len(inst.items) > 0:
+	if random.randint(1, 2000) == 1 and len(inst.items) > 0:
 		x = inst.items.pop(0)
 		try: resutltFromAWS = inst.request(x)
 		except Exception as e:
